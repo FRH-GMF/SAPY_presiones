@@ -1,0 +1,2 @@
+pyinstaller.exe --onefile --windowed --icon=LAyF.ico Procesamiento-GUI.py
+pyinstaller.exe --onedir --windowed --icon=LAyF.ico Procesamiento-GUI.py
