@@ -1,10 +1,13 @@
 import os
 import base64
-from functions import *
 
-# Carga de logo e icono
-from logo import *
-from icono import *
+# Carga imagenes del layout e icono
+from image.logo import *
+from image.icono import *
+
+# Cargar funciones
+from function.functions import *
+
 
 # -----------Icono-----------
 icon_bytes = base64.b64decode(icon)
@@ -48,8 +51,11 @@ col2 = [[sg.Text('Seleccione los archivos a procesar')], [sg.Button('Todos', key
 
 layout = [[sg.Column(col1), sg.Column(col2)]]
 
-# Crear la interfaz
-window = sg.Window("Procesamiento de presiones – SAPY - Version 1.0", layout, resizable=False, icon=icon_bytes)
+# Generacion de 2 ventanas (windows)
+# La primera es el programa principal, la segunda es para ventanas de avisos de progreso.
+window1 = sg.Window("Procesamiento de presiones – SAPY - Version 1.1", layout, resizable=False, icon=icon_bytes,
+                    finalize=True)
+window2 = None  # Ventana de progreso
 
 # Inicializacion de variables. Evita errores en el loop.
 fnames = ['No hay archivos CSV']
@@ -57,7 +63,8 @@ vref = []
 
 # -------------Loop de evento-------------
 while True:
-    event, values = window.read()
+    # Se utiliza el sistema multi-window. Se utiliza una segunda ventana.
+    window, event, values = sg.read_all_windows()
     # Lectura de la carpeta de trabajo.
     if event == '-FOLDER-':
         folder = values['-FOLDER-']
@@ -169,8 +176,15 @@ while True:
             save_pressure = []  # Inicializo variable donde se guardan los datos de presion.
             save_uncert = []  # Inicializo variable donde se guardan los datos de incertidumbre.
             error_files_list = []  # Inicializo variable donde se guardan los archivos con fallas.
+            # Barra de progreso del calculo
+            window2 = sg.Window('Procesando', [[sg.Text('Procesando ... 0%', key='-PROGRESS VALUE-')], [
+                sg.ProgressBar(len(file_path_list), orientation='horizontal', style='xpnative', size=(20, 20),
+                               k='-PROGRESS-')]], finalize=True, icon=icon_bytes)
             for i in range(len(file_path_list)):
                 data = []  # Reinicio de la variable donde se guardan los datos del CSV.
+                # Actualizacion barra de progreso
+                window2['-PROGRESS-'].update(current_count=i)
+                window2['-PROGRESS VALUE-'].update('Procesando ... {}%'.format(int(((i+1)/len(file_path_list))*100)))
                 # Se abre cada archivo que figura en el listado.
                 with open(file_path_list[i]) as csv_file:
                     csv_reader = csv.reader(csv_file, delimiter=';')
@@ -185,14 +199,21 @@ while True:
                     except Exception as e:
                         print(e)
                         error_files_list.append(file_list[i])
+            # Se cierra la ventana de progreso
+            window2.close()
 
-            # Guardado de los archivos
+            # Guardado de los archivos+
+            # Ventana de aviso de guardado de archivos
+            window2 = sg.Window('', [[sg.Text('Guardando archivos CSV')]], no_titlebar=True, background_color='grey',
+                                finalize=True)
             save_csv_pressure(save_pressure, path_folder, seplist, decsep)
             save_csv_incert(save_uncert, conf_level, path_folder, seplist, decsep)
-            info_popup('Los archivos de salida presiones.csv y incertidumbre.csv se guardaron con exito')
+            #  Se cierra la ventana de aviso de guardado de archivos
+            window2.close()
+            info_popup('Los archivos de salida se guardaron con exito')
 
             # Listado de los valores de voltaje del autozero. Se activa for el checkbox.
-            if values['-INFAUTOZERO-'] == True:
+            if values['-INFAUTOZERO-']:
                 values_vref = []
                 for toma_volt, value in vref.items():
                     values_vref.append(str(toma_volt) + ': {}'.format(round(value, 4)))

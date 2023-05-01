@@ -3,33 +3,38 @@ from subprocess import check_output
 import scipy.stats as stats
 import PySimpleGUI as sg
 import csv
+import base64
 
+# Carga imagenes del layout e icono
+from image.icono import *
+
+
+# -----------Icono-----------
+icon_bytes = base64.b64decode(icon)
 
 # -------------------------Mensajes popup-------------------------
 def error_popup(message):
-    sg.Window('Error', [[sg.T('{}'.format(message))],
-                        [sg.B('OK', bind_return_key=True, size=(4, 1))]],
-              element_justification='c').read(close=True)
+    sg.Window('Error', [[sg.T('{}'.format(message))], [sg.B('OK', bind_return_key=True, size=(4, 1))]],
+              element_justification='c', icon=icon_bytes).read(close=True)
 
 
 def info_popup(message):
-    sg.Window('Informacion', [[sg.T('{}'.format(message))],
-                              [sg.B('OK', bind_return_key=True, size=(4, 1))]],
-              element_justification='c').read(close=True)
+    sg.Window('Informacion', [[sg.T('{}'.format(message))], [sg.B('OK', bind_return_key=True, size=(4, 1))]],
+              element_justification='c', icon=icon_bytes).read(close=True)
 
 
 def error_files_popup(files):
-    sg.Window('Error', [[sg.T('Los siguientes archivos no pudieron procesarse:')],
-                        [sg.Multiline(default_text=files, write_only=True, expand_x=True, expand_y=True,
-                                      size=(30, 10))],
-                        [sg.Push(), sg.B('OK', bind_return_key=True, size=(4, 1))]], resizable=True).read(close=True)
+    sg.Window('Error', [[sg.T('Los siguientes archivos no pudieron procesarse:')], [
+        sg.Multiline(default_text=files, write_only=True, expand_x=True, expand_y=True, size=(30, 10))],
+                        [sg.Push(), sg.B('OK', bind_return_key=True, size=(4, 1))]], resizable=True,
+              icon=icon_bytes).read(close=True)
 
 
 def autozero_popup(values):
-    sg.Window('Resultados Autozero', [[sg.T('Se lista los valores de tension utilizados para el Autozero:')],
-                        [sg.Multiline(default_text=values, write_only=True, expand_x=True, expand_y=True,
-                                      size=(30, 10))],
-                        [sg.Push(), sg.B('OK', bind_return_key=True, size=(4, 1))]], resizable=True).read(close=True)
+    sg.Window('Resultados Autozero', [[sg.T('Se lista los valores de tension utilizados para el Autozero:')], [
+        sg.Multiline(default_text=values, write_only=True, expand_x=True, expand_y=True, size=(30, 10))],
+                                      [sg.Push(), sg.B('OK', bind_return_key=True, size=(4, 1))]], resizable=True,
+              icon=icon_bytes).read(close=True)
 
 
 # -------------------------Funciones de procesamiento-------------------------

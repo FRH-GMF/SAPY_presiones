@@ -1,2 +1,2 @@
-pyinstaller.exe --onefile --windowed --icon=LAyF.ico Presiones - SAPY.py
-pyinstaller.exe --onedir --windowed --icon=LAyF.ico Presiones - SAPY.py
+pyinstaller.exe --onefile --windowed --icon=LAyF.ico Procesamiento-GUI.py
+pyinstaller.exe --onedir --windowed --icon=LAyF.ico Procesamiento-GUI.py
