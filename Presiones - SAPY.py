@@ -76,11 +76,6 @@ while True:
         # Busca en la carpeta de trabajo los archivos que sean solo CSV.
         fnames = [f for f in file_list if os.path.isfile(
             os.path.join(folder, f)) and f.lower().endswith(".csv")]
-        # Eliminar del analisis los archivos de salida.
-        if "presiones.csv" in fnames:
-            fnames.remove("presiones.csv")
-        if "incertidumbre.csv" in file_list:
-            fnames.remove("incertidumbre.csv")
         # Si mo hay archivos CSV en la carpeta devuelve advertencia en el ListBox.
         if not fnames:
             fnames = ['No hay archivos CSV']
@@ -121,7 +116,7 @@ while True:
         elif conf_level == '99%':
             conf_level = float(0.99)
 
-        # Comprobacióm de errores
+        # ------ Comprobacióm de errores ------
         #  La carpeta no existe
         if not os.path.exists(path_folder):
             error_popup('La carpeta seleccionada no existe')
@@ -134,7 +129,7 @@ while True:
             error_popup('No se selecciono el archivo de referencia')
             can_process = False
 
-        # Calculo de los voltajes de referencia. Ante falla da aviso.
+        # Calculo de los voltajes de referencia.
         if can_process:  # Si no hubo errores se continua. Similar a can_process==True.
             try:  # Prueba procesar el archivo sino genera mensaje de error.
                 path = path_folder + '/' + cero_file
@@ -145,24 +140,16 @@ while True:
                 error_popup('El archivo de referencia cero no es procesable')
                 can_process = False
 
-        # Avisa sino es posible grabar los archivos de salida.
-        if can_process:
-            try:  # Prueba grabar el archivo sino genera mensaje de error.
-                with open(path_folder + '/incertidumbre.csv', "w", newline='') as f:
-                    writer = csv.writer(f, delimiter=seplist)
+        # Creacion/verificacion de la carpeta "Resultados".
+        save_path_folder = path_folder + '/' + 'Resultados'  # Linea para cambiar el nombre de la carpeta de salida
+        if not os.path.isdir(save_path_folder):
+            try:  # Prueba generar la cerpeta "Resultados".
+                os.mkdir(save_path_folder)
             except Exception as e:
                 print(e)
-                if can_process:
-                    error_popup('El archivo incertidumbre.csv se encuentra abierto, cierrelo e intente de nuevo')
-                    can_process = False
-            try:  # Prueba grabar el archivo sino genera mensaje de error.
-                with open(path_folder + '/presiones.csv', "w", newline='') as f:
-                    writer = csv.writer(f, delimiter=seplist)
-            except Exception as e:
-                print(e)
-                if can_process:  # Evita que se generen dos popup de error de ambos archivos fallidos.
-                    error_popup('El archivo presiones.csv se encuentra abierto, cierrelo e intente de nuevo')
-                    can_process = False
+                # Aviso de cero no procesable
+                error_popup('No se pudo crear la carpeta "Resultados"')
+                can_process = False
 
         # Si no hay errores se prosigue
         if can_process:
@@ -171,15 +158,13 @@ while True:
             file_path_list = []
             for i in file_list:
                 file_path_list.append(path_folder + '/' + i)
-
             # Procesamiento de los archivos
-            save_pressure = []  # Inicializo variable donde se guardan los datos de presion.
-            save_uncert = []  # Inicializo variable donde se guardan los datos de incertidumbre.
+            save_data = []  # Inicializo variable donde se guardan los datos.
             error_files_list = []  # Inicializo variable donde se guardan los archivos con fallas.
             # Barra de progreso del calculo
             window2 = sg.Window('Procesando', [[sg.Text('Procesando ... 0%', key='-PROGRESS VALUE-')], [
                 sg.ProgressBar(len(file_path_list), orientation='horizontal', style='xpnative', size=(20, 20),
-                               k='-PROGRESS-')]], finalize=True, icon=icon_bytes)
+                               k='-PROGRESS-')]], finalize=True, icon=icon_bytes, modal=True)
             for i in range(len(file_path_list)):
                 data = []  # Reinicio de la variable donde se guardan los datos del CSV.
                 # Actualizacion barra de progreso
@@ -188,39 +173,44 @@ while True:
                 # Se abre cada archivo que figura en el listado.
                 with open(file_path_list[i]) as csv_file:
                     csv_reader = csv.reader(csv_file, delimiter=';')
-                    # Extraigo todas las filas de un archivo y se lo procesa.
+                    # Extraccion de todas las filas del archivo CSV
                     for csv_row in csv_reader:
                         data.append(csv_row)
                     try:
-                        # Variable buffer que evita informacion redundante en "save_uncert"
-                        save_buffer_pressure, save_buffer_uncert = data_process(data, vref, file_list[i], conf_level)
-                        save_pressure.extend(save_buffer_pressure)  # Union de los datos procesados de cada archivo.
-                        save_uncert.extend(save_buffer_uncert)  # Procesamiento de la incertidumbre de las presiones.
+                        # Calculo de las presiones y la incertidumbre
+                        data_calc = data_process(data, vref, file_list[i], conf_level)
+                        # Union de los datos procesados de cada archivo.
+                        save_data.append(data_calc)
                     except Exception as e:
                         print(e)
+                        # Se agrega el nombre de archivo que no se proceso bien.
                         error_files_list.append(file_list[i])
             # Se cierra la ventana de progreso
             window2.close()
 
-            # Guardado de los archivos+
-            # Ventana de aviso de guardado de archivos
-            window2 = sg.Window('', [[sg.Text('Guardando archivos CSV')]], no_titlebar=True, background_color='grey',
-                                finalize=True)
-            save_csv_pressure(save_pressure, path_folder, seplist, decsep)
-            save_csv_incert(save_uncert, conf_level, path_folder, seplist, decsep)
-            #  Se cierra la ventana de aviso de guardado de archivos
-            window2.close()
-            info_popup('Los archivos de salida se guardaron con exito')
+            # Prevención de error cuando todos los archivos fallan en procesarse
+            if len(save_data) == 0:
+                info_popup('No se llego a procesar ningun archivo')
+            else:
+                # Guardado de los archivos
+                # Ventana de aviso de guardado de archivos
+                window2 = sg.Window('', [[sg.Text('Guardando archivos CSV')]], no_titlebar=True,
+                                    background_color='grey', finalize=True, modal=True)
+                save_csv_pressure(save_data, save_path_folder, seplist, decsep)
+                save_csv_incert(save_data, conf_level, save_path_folder, seplist, decsep)
+                # Se cierra la ventana de aviso de guardado de archivos
+                window2.close()
+                info_popup('Los archivos de salida se guardaron con exito')
 
-            # Listado de los valores de voltaje del autozero. Se activa for el checkbox.
+            # Listado de los valores de voltaje del autozero. Se activa por el checkbox.
             if values['-INFAUTOZERO-']:
                 values_vref = []
                 for toma_volt, value in vref.items():
                     values_vref.append(str(toma_volt) + ': {}'.format(round(value, 4)))
                 autozero_popup('\n'.join(values_vref))
 
+            # Aviso de archivos no procesados
             if error_files_list:
-                # Aviso de archivos no procesados
                 error_files_popup('\n'.join(error_files_list))
 
     # Salida del programa
@@ -228,3 +218,5 @@ while True:
         break
 
 window.close()
+
+# Developed by P
