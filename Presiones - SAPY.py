@@ -16,8 +16,8 @@ icon_bytes = base64.b64decode(icon)
 # Theme
 sg.theme('SystemDefaultForReal')
 
-# Layout
-# Armado del frame del la configuracion CSV
+# Secciones del Layout
+# Armado del frame de la configuracion CSV
 frame = [[sg.Radio("Automatico (solo Windows)", "grupo-CSV")],
          [sg.Radio("Separador de listas: COMA - Simbolo decimal: PUNTO", "grupo-CSV", default=True)],
          [sg.Radio("Separador de listas: PUNTO Y COMA - Simbolo decimal: COMA", "grupo-CSV")]]
@@ -54,17 +54,18 @@ layout = [[sg.Column(col1), sg.Column(col2)]]
 # Generacion de 2 ventanas (windows)
 # La primera es el programa principal, la segunda es para ventanas de avisos de progreso.
 window1 = sg.Window("Procesamiento de presiones – SAPY - Version 1.1", layout, resizable=False, icon=icon_bytes,
-                    finalize=True)
+                    finalize=True)  # Ventana de Principal
 window2 = None  # Ventana de progreso
 
-# Inicializacion de variables. Evita errores en el loop.
+# Inicializacion de variables. Evita que se generen errores en el loop.
 fnames = ['No hay archivos CSV']
 vref = []
 
 # -------------Loop de evento-------------
 while True:
-    # Se utiliza el sistema multi-window. Se utiliza una segunda ventana.
+    # Se utiliza el sistema multi-window.
     window, event, values = sg.read_all_windows()
+
     # Lectura de la carpeta de trabajo.
     if event == '-FOLDER-':
         folder = values['-FOLDER-']
@@ -94,7 +95,8 @@ while True:
     # Boton Procesar
     if event == '-PROCESS-':
         can_process = True  # Flag de que no existen errores.
-        # Ingreso de datos desde la interfaz grafica.
+
+        # Carga de datos provenientes de la interfaz grafica.
         # Nombre de la carpeta de trabajo
         path_folder = values['-FOLDER-']
         # Nombre del archivo del cero referencia
@@ -106,8 +108,8 @@ while True:
             option = 1
         else:
             option = 2
-        seplist, decsep = formato_csv(option)
-        # Nivel de Confianza. Se eligio 68.27%, 95% y 99%. Los que se suelen usar.
+        seplist, decsep = formato_csv(option)  # De la opcion seleccionada obtengo el formato definido
+        # Nivel de Confianza. Se definieron 68.27%, 95% y 99%. Los que se suelen usar.
         conf_level = values['-CONF-']
         if conf_level == '68%':
             conf_level = float(0.6827)
@@ -118,7 +120,7 @@ while True:
 
         # ------ Comprobacióm de errores ------
         #  La carpeta no existe
-        if not os.path.exists(path_folder):
+        if not os.path.exists(path_folder) and can_process:
             error_popup('La carpeta seleccionada no existe')
             can_process = False
         #  No se seleccionaron archivos. Que no sea vacio ni con el mensaje del listbox.
@@ -130,8 +132,8 @@ while True:
             can_process = False
 
         # Calculo de los voltajes de referencia.
-        if can_process:  # Si no hubo errores se continua. Similar a can_process==True.
-            try:  # Prueba procesar el archivo sino genera mensaje de error.
+        if can_process:  # Si no hubo errores se continua.
+            try:  # Intenta procesar el archivo sino genera un mensaje de error.
                 path = path_folder + '/' + cero_file
                 vref = reference_voltage(path)
             except Exception as e:
@@ -141,23 +143,30 @@ while True:
                 can_process = False
 
         # Creacion/verificacion de la carpeta "Resultados".
-        save_path_folder = path_folder + '/' + 'Resultados'  # Linea para cambiar el nombre de la carpeta de salida
+        save_path_folder = path_folder + '/Resultados'  # Linea para cambiar el nombre de la carpeta de salida
         if not os.path.isdir(save_path_folder):
-            try:  # Prueba generar la cerpeta "Resultados".
+            try:
+                # Prueba generar la cerpeta "Resultados".
                 os.mkdir(save_path_folder)
             except Exception as e:
                 print(e)
-                # Aviso de cero no procesable
+                # Aviso la carpeta de salida no pudo crearse
                 error_popup('No se pudo crear la carpeta "Resultados"')
                 can_process = False
+
+        # Listado de los valores de voltaje del autozero. Se activa por el checkbox de la interfaz.
+        if values['-INFAUTOZERO-']:
+            values_vref = []
+            for toma_volt, value in vref.items():
+                values_vref.append(str(toma_volt) + ': {}'.format(round(value, 4)))
+            autozero_popup('\n'.join(values_vref))
 
         # Si no hay errores se prosigue
         if can_process:
             # Armado listado de archivos seleccionados
             file_list = values['-FILE LIST-']
-            file_path_list = []
-            for i in file_list:
-                file_path_list.append(path_folder + '/' + i)
+            file_path_list = [path_folder + '/' + i for i in file_list]
+
             # Procesamiento de los archivos
             save_data = []  # Inicializo variable donde se guardan los datos.
             error_files_list = []  # Inicializo variable donde se guardan los archivos con fallas.
@@ -170,7 +179,7 @@ while True:
                 # Actualizacion barra de progreso
                 window2['-PROGRESS-'].update(current_count=i)
                 window2['-PROGRESS VALUE-'].update('Procesando ... {}%'.format(int(((i+1)/len(file_path_list))*100)))
-                # Se abre cada archivo que figura en el listado.
+                # Se abre cada archivo seleccionado en la interfaz.
                 with open(file_path_list[i]) as csv_file:
                     csv_reader = csv.reader(csv_file, delimiter=';')
                     # Extraccion de todas las filas del archivo CSV
@@ -183,31 +192,24 @@ while True:
                         save_data.append(data_calc)
                     except Exception as e:
                         print(e)
-                        # Se agrega el nombre de archivo que no se proceso bien.
+                        # Se agrega el nombre de archivo que no pudo procesarse.
                         error_files_list.append(file_list[i])
             # Se cierra la ventana de progreso
             window2.close()
 
-            # Prevención de error cuando todos los archivos fallan en procesarse
+            # Prevención de error cuando todos los archivos fallan en procesarse.
             if len(save_data) == 0:
                 info_popup('No se llego a procesar ningun archivo')
             else:
-                # Guardado de los archivos
+                # ---------- Guardado de los archivos ----------
                 # Ventana de aviso de guardado de archivos
                 window2 = sg.Window('', [[sg.Text('Guardando archivos CSV')]], no_titlebar=True,
                                     background_color='grey', finalize=True, modal=True)
                 save_csv_pressure(save_data, save_path_folder, seplist, decsep)
                 save_csv_incert(save_data, conf_level, save_path_folder, seplist, decsep)
-                # Se cierra la ventana de aviso de guardado de archivos
+                # Se cierra la ventana de aviso de guardado de archivos.
                 window2.close()
                 info_popup('Los archivos de salida se guardaron con exito')
-
-            # Listado de los valores de voltaje del autozero. Se activa por el checkbox.
-            if values['-INFAUTOZERO-']:
-                values_vref = []
-                for toma_volt, value in vref.items():
-                    values_vref.append(str(toma_volt) + ': {}'.format(round(value, 4)))
-                autozero_popup('\n'.join(values_vref))
 
             # Aviso de archivos no procesados
             if error_files_list:

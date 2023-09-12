@@ -14,45 +14,57 @@ from image.icono import *
 icon_bytes = base64.b64decode(icon)
 
 # -------------------------Mensajes popup-------------------------
+# Popup de error
 def error_popup(message):
     sg.Window('Error', [[sg.T('{}'.format(message))], [sg.B('OK', bind_return_key=True, size=(4, 1))]],
-              element_justification='c', icon=icon_bytes).read(close=True)
+              element_justification='c', icon=icon_bytes, modal=True).read(close=True)
 
 
+# Popup informativo
 def info_popup(message):
     sg.Window('Informacion', [[sg.T('{}'.format(message))], [sg.B('OK', bind_return_key=True, size=(4, 1))]],
-              element_justification='c', icon=icon_bytes).read(close=True)
+              element_justification='c', icon=icon_bytes, modal=True).read(close=True)
 
 
+# Ventana con lista de archivos no procesados
 def error_files_popup(files):
     sg.Window('Error', [[sg.T('Los siguientes archivos no pudieron procesarse:')], [
         sg.Multiline(default_text=files, write_only=True, expand_x=True, expand_y=True, size=(30, 10))],
                         [sg.Push(), sg.B('OK', bind_return_key=True, size=(4, 1))]], resizable=True,
-              icon=icon_bytes).read(close=True)
+              icon=icon_bytes, modal=True).read(close=True)
 
 
+# Ventana informativa con el listado de voltajes del autozero
 def autozero_popup(values):
-    sg.Window('Resultados Autozero', [[sg.T('Se lista los valores de tension utilizados para el Autozero:')], [
+    sg.Window('Resultados Autozero', [[sg.T('Lista de valores de tension utilizados para el Autozero:')], [
         sg.Multiline(default_text=values, write_only=True, expand_x=True, expand_y=True, size=(30, 10))],
                                       [sg.Push(), sg.B('OK', bind_return_key=True, size=(4, 1))]], resizable=True,
-              icon=icon_bytes).read(close=True)
+              icon=icon_bytes, modal=True).read(close=True)
 
 
 # -------------------------Funciones de procesamiento-------------------------
+# Devuelve las variables necesarias para establecer el formato CSV seleccionado.
 def formato_csv(option):
     # La opcion "0" lee el formato de "separacion de listas" y el "simbolo decimal" del registro de windows.
     if option == 0:
-        # Envia el comando al CMD y luego se aisla el valor del parametro.
-        salida = check_output('Reg Query "HKEY_CURRENT_USER\Control Panel\International" /v sList',
-                              shell=True)
-        salida = salida.decode("utf-8").split("\n")
-        seplist = salida[2].replace('    sList    REG_SZ    ', '').replace('\r', '')
-        salida = check_output('Reg Query "HKEY_CURRENT_USER\Control Panel\International" /v sDecimal',
-                              shell=True)
-        salida = salida.decode("utf-8").split("\n")
-        decsep = salida[2].replace('    sDecimal    REG_SZ    ', '').replace('\r', '')
-        info_popup('Según el registro del sistema el separdor de LISTAS es "{}"'.format(seplist) +
-                    ' y el simbolo DECIMAL es "{}"'.format(seplist))
+        # Envia el comando al CMD y luego se aisla el valor de los parametros buscados.
+        try:
+            salida = check_output('Reg Query "HKEY_CURRENT_USER\Control Panel\International" /v sList',
+                                  shell=True)
+            salida = salida.decode("utf-8").split("\n")
+            seplist = salida[2].replace('    sList    REG_SZ    ', '').replace('\r', '')
+            salida = check_output('Reg Query "HKEY_CURRENT_USER\Control Panel\International" /v sDecimal',
+                                  shell=True)
+            salida = salida.decode("utf-8").split("\n")
+            decsep = salida[2].replace('    sDecimal    REG_SZ    ', '').replace('\r', '')
+            info_popup('Según el registro del sistema el separdor de LISTAS es "{}"'.format(seplist) +
+                        ' y el simbolo DECIMAL es "{}"'.format(seplist))
+        except Exception as e:
+            # Ante falla de la deteccion automatica se avisa y se usan valores por default.
+            print(e)
+            error_popup('''Fallo el modo automatico, se establecera por defecto separdor de LISTAS "," y el simbolo DECIMAL "."''')
+            seplist = ','
+            decsep = '.'
     elif option == 1:
         seplist = ','
         decsep = '.'
@@ -60,16 +72,17 @@ def formato_csv(option):
         seplist = ';'
         decsep = ','
     else:
+        # Caso remoto de suceder.
         sg.popup('Algo raro paso en la eleccion del formato de salida del CSV', title='Error',
-                 keep_on_top=True)
-        seplist = ''
-        decsep = ''
+                 keep_on_top=True, icon=icon_bytes)
+        seplist = ','
+        decsep = '.'
     return seplist, decsep
 
 
-# Determinacion del voltaje de referencia de cada toma del instrumento.
+# Determinacion del voltaje de referencia de cada sensor del instrumento.
 def reference_voltage(path):
-    # Diccionario por defecto de los voltajes de referencia de las tomas. Maximo SAPY 32 tomas. Valor pod default 1.
+    # Diccionario por defecto de los voltajes de referencia de los sensores. Maximo SAPY 32 sensores. Valor pod default 1.
     vref = {f'V{i}': 1 for i in range(1, 33)}
     with open(path) as csv_file:
         csv_reader = csv.reader(csv_file, delimiter=';')
@@ -78,78 +91,76 @@ def reference_voltage(path):
         for csv_row in csv_reader:
             data_row.append(csv_row)
     data_row.pop(-1)  # Se elimina ultima fila con el caracter #
-    # Determinaciòn tipo de formato
+    # Determinaciòn tipo de formato de entrada. Con o sin tiempo incluido.
     if data_row[0][0] == '>T':
-        format = 'B'
+        format_input_file = 'B'
     else:
-        format = 'A'
-    # Calculo de las presiones de referencia para diferentes formatos de datos
-    if format == 'A':
-        # Calculo el valor promedio de voltaje de cada toma del archivo seleccionado.
+        format_input_file = 'A'
+    # Calculo de los voltajes de referencia para diferentes formatos de datos
+    if format_input_file == 'A':
+        # Calculo el valor promedio de voltaje de cada sensor del archivo seleccionado.
         for i in range(int(len(data_row) / 2)):
             numbsenor = data_row[2 * i][1]  # Se utiliza la estrategia de que los valores vienen en pares
             values = data_row[i * 2][2:-1]  # Se extraen los valores de los voltajes.
-            values = [float(i.replace(',', '.')) for i in values]  # Convierto valores de la lista a flotacion.
+            values = [float(i.replace(',', '.')) for i in values]  # Convierto valores de la lista a float.
             averang = sum(values) / len(values)  # Calculo el promedio de Vout.
             averang = float('%.6f' % averang)  # Reducir el numero de cifras a 6
-            vref["V{}".format(numbsenor)] = averang  # Modifico valor del diccionario para la toma especifica.
+            vref["V{}".format(numbsenor)] = averang  # Modifico valor del diccionario para el sensor especifico.
     elif 'B':
-        # Determinacion de los numero de sensores usados
-        # Notas codigo: En la posicion 3 empiezan los sensores de presión ; El -1 es por la presencia de ">"
+        # Determinacion del numero de cada sensor utilizado.
+        # Notas codigo: En la posicion 3 empiezan los valores de  presión ; El -1 es por la presencia de ">"
         header = [int(line.replace("toma_", "")) for line in data_row[0][3:-1]]
         data_row.pop(0)  # Se elimina el encabezado
-        count = 0  # Contador utilizado para determinar numero de sensor procesado
+        count = 0  # Contador utilizado para determinar el numero de sensor procesado
         for i in range(3, len(data_row[0]) - 1):
             # Valor de referencia del sensor analizado.
             numbsenor = header[count]
             # Se suma el contador ya que se definio el "numbsenor"
             count += 1
-            values = []
+            values = []  # Reinicio de la variable
             for j in range(len(data_row)):
                 values.append(float(data_row[j][i].replace(',', '.')))
             averang = sum(values) / len(values)  # Calculo el promedio de Vout.
             averang = float('%.6f' % averang)  # Reducir el numero de cifras a 6
-            vref["V{}".format(numbsenor)] = averang  # Modifico valor del diccionario para la toma especifica.
+            vref["V{}".format(numbsenor)] = averang  # Modifico valor del diccionario para el sensor especifico.
     return vref
 
 
-# Se preprocesan los datos inicialmente y luego se determinan las presiones y las incertidumbres
+# Procesamiento de las presiones y la incertidumbre
 def data_process(data_csv, vref, filename, nivconf):
-    data_out = {}  # Inicializacion variable de guardado de datos del csv procesado
+    data_out = {}  # Inicializacion variable donde se guardan los resultados de cada archivo csv procesado.
     data_out.update({'Archivo': filename})  # Guardado nombre de archivo
     # --------------Procesamiento de los datos en bruto--------------
-    data = []  # Inicializacion variable de guardado de datos del csv procesado
+    data = []  # Inicializacion variable de guardado de los datos.
     data_csv.pop(-1)  # Se elimina ultima fila con el caracter #
-    # Determinaciòn tipo de formato de entrada
-    if data_csv[1][0] == '>T':
-        format = 'B'
+    # Determinaciòn tipo de formato de entrada. Con o sin tiempo incluido.
+    if data_csv[0][0] == '>T':
+        format_input_file = 'B'
     else:
-        format = 'A'
+        format_input_file = 'A'
     # Calculo de presion para diferentes formatos de datos
-    if format == 'A':
+    if format_input_file == 'A':
         for line in data_csv:
-            data_buffer = []  # Reinicio variable de guardado
             # Se elimina el primer (M o V) y el ultimo (>) elemento
             line = line[1:-1]
             # Conversion de string a float de todos los valores del CSV.
             data_buffer = [float(i.replace(',', '.')) for i in line]
             data.append(data_buffer)
         # --------------Procesamiento de las presiones--------------
-        data_pressure = []  # Inicializo la variable de salida.
         for i in range(int(len(data) / 2)):  # Se utiliza la estrategia de que los valores de las tomas vienen en pares
             # Valor de referencia del sensor analizado.
             numbsenor = int(data[2 * i][0])
             V0 = vref["V{}".format(numbsenor)]  # Extraigo del diccionario el valor de referencia.
-            # Calculo las presiones para la toma indicada.
-            pressure = []  # Inicializo la variable donde guardo las presiones.
+            # Calculo las presiones para el sensor indicado.
+            data_pressure = []  # Inicializo la variable donde guardo las presiones.
             for j in range(1, len(data[0])):
                 Vout = data[i * 2][j]
                 Vs = data[i * 2 + 1][j]
                 value = (((Vout - V0) / (Vs * 0.2)) * 1000)  # Calculo de presion en Pascales
                 value = float('%.4f' % value)  # Reduccion a 4 cifras.
-                pressure.append(value)
-            # Guardado de datos en variable de salida y en variable local
-            data_out.update({"Presion-Sensor {}".format(numbsenor): pressure})  # Agregado de datos de presiones
+                data_pressure.append(value)
+            # Guardado de datos en variable de salida
+            data_out.update({"Presion-Sensor {}".format(numbsenor): data_pressure})  # Agregado de datos de presiones
     else:
         # Determinacion de los numero de sensores guardados
         # Notas codigo: En la posicion 3 empiezan los sensores de presión ; El -1 es por la presencia de ">"
@@ -157,13 +168,13 @@ def data_process(data_csv, vref, filename, nivconf):
         data_csv.pop(0)  # Se elimina el encabezado
         # Extracion y conversion del tiempo en segundos. Se redondea a 4 cifras
         time_value = [round(float(line[1])* 1e-6, 4) for line in data_csv]
-        # Agregado de datos de presiones
+        # Guardado de datos del tiempo
         data_out.update({"Tiempo medicion": time_value})
         del time_value
-        # Basado en la estructura de datos a procesar se obtiene la presion de cada sensor con numero respectivo
+        # Se analiza los datos por columna usando un contandor para determinar el numero de sensor de cada columna
         count = 0  # Contador utilizado para determinar numero de sensor
         for i in range(3, len(data_csv[0]) - 1):
-            # Valor de referencia del s.ensor analizado.
+            # Valor de referencia del sensor analizado.
             numbsenor = header[count]
             V0 = vref["V{}".format(numbsenor)]  # Extraigo del diccionario el valor de referencia.
             # Se suma el contador ya que se definio el "numbsenor"
@@ -176,17 +187,16 @@ def data_process(data_csv, vref, filename, nivconf):
                 value = (((Vout - V0) / (Vs * 0.2)) * 1000)  # Calculo de presion en Pascales
                 value = float('%.4f' % value)  # Reduccion a 4 cifras
                 pressure.append(value)
-            # Guardado de datos en variable de salida y en variable local
+            # Guardado de datos en variable de salida
             data_out.update({"Presion-Sensor {}".format(numbsenor): pressure})  # Agregado de datos de presiones
-    # --------------Calculo de la incertidumbre--------------
-    # Se determina el numero de tomas de los keys del diccionario "data_out"
+    # -------------- Calculo de la incertidumbre --------------
+    # Se determina el numero de sensores de los keys a partir del diccionario "data_out"
     pressure_list = [k for k in list(data_out.keys()) if 'Presion-Sensor' in k]
-    data_uncert = []  # Inicializo la variable de salida.
     crit = 10  # Criterio de contribucion dominante. Se eligio 10 veces superior.
     for i in pressure_list:
-        # Extraigo datos numericos.
+        # Extraigo datos de presiones.
         data_raw = data_out[i]
-        # Numero de toma. Se obtiene del key del diccionario
+        # Numero del sensor. Se obtiene del key del diccionario
         numb_probe = i.replace('Presion-Sensor ','')
         # Calculo de incertidumbre.
         sample = len(data_raw)  # Numero de muestras.
@@ -202,7 +212,7 @@ def data_process(data_csv, vref, filename, nivconf):
             ucomb = (typea ** 2 + typeb ** 2) ** 0.5  # Incertidumbre combinada.
             data_out.update({"Incertidumbre Combinada-{}".format(numb_probe): ucomb})
             # Analisis de la contribucion dominante para la determinacion de la incertidumbre expandida.
-            try:  # El siguiente codigo evita la division por cero.
+            try:  # Se evita la division por cero.
                 rel_tipe = typea / typeb
             except Exception as e:
                 print(e)
@@ -240,33 +250,34 @@ def data_process(data_csv, vref, filename, nivconf):
     return data_out
 
 
-# -------------------------Guardados de archivos CSV-------------------------
+# ------------------------- Guardados de archivos CSV -------------------------
+# Guardado de los datos de las presiones en archivo CSV
 def save_csv_pressure(save_pressure, path, seplist, decsep):
-    save_data = []  # Variable de grabacion.
+    save_data = []  # Variable buffer para grabacion de datos.
     # Determinar la longitud mas larga de las listas de presiones.
-    # Puede existir mediciones con numeros diferentes de presiones.
+    # Puede existir mediciones con numeros diferentes de muestras.
     max_len = 0
     for i in range(len(save_pressure)):
-        # Maxima longitud de save_pressure["Presion-Sensor x"] siendo "Presion-Sensor x" el segundo key del diccionario
+        # Maxima longitud de save_pressure["Presion-Sensor x"] siendo "Presion-Sensor x" el primer sensor guardado
+        # en el diccionario.
         long = len(save_pressure[i][list(save_pressure[i].keys())[1]])
         if max_len < long:
             max_len = long
-    # Completar las listas con string vacios hasta tener todas la longitud maxima calculada anteriormente. REESCRIBIR
-    # Luego se agrega cada una de las listas de presiones en una lista. REESCRIBIR
+    # Listado de sensores usados.
     for i in range(len(save_pressure)):
         # Listado de keys para cada formato de entrada (con o sin tiempo)
-        if 'Tiempo medicion' in list(save_pressure[i].keys()):
+        if 'Tiempo medicion' in list(save_pressure[i].keys()):  # Si tiene tiempo se agrega los datos.
             list_sensor = ['Tiempo medicion']
-            # Listado de senosres usados
             list_sensor.extend([l for l in list(save_pressure[i].keys()) if 'Presion-Sensor' in l])
         else:
-            # Listado de senosres usados
             list_sensor = [l for l in list(save_pressure[i].keys()) if 'Presion-Sensor' in l]
+        # Armado de la estructura de datos para ser guardada de cada sensor.
         for j in list_sensor:
             save_data_buffer = [save_pressure[i]["Archivo"], j]  # Agrego nombre del archivo y el nombre del sensor/tiempo.
-            save_data_buffer.extend(save_pressure[i][j])
-            # Si el largo de la lista es menor a "max_len" se agregan string vacios ""
-            # Nota: Se permite trasponer los datos en columnas al guardar el CSV sino generaria un error mientras se
+            save_data_buffer.extend(save_pressure[i][j])   # Agregado de los datos de presion
+            # Si el largo de la lista es menor a "max_len" se agregan string vacios "". Todas las listas deben tener
+            # la misma lingitud.
+            # Nota: Esto permite trasponer los datos en columnas al guardar el CSV sino generaria un error mientras se
             # graba cada linea.
             if len(save_data_buffer) < max_len + 2:  # el 2 es por el agregado del nombre de archivo y el sensor/tiempo.
                 save_data_buffer.extend(["" for i in range(max_len+2-len(save_data_buffer))])
@@ -277,12 +288,13 @@ def save_csv_pressure(save_pressure, path, seplist, decsep):
     save_file_name = path +'/presiones_{}.csv'.format(date_file_name)
     with open(save_file_name, "w", newline='') as f:
         writer = csv.writer(f, delimiter=seplist)
-        # Transposicion de la lista de listados. Conversion de los datos alformato CSV elegido.
+        # Transposicion de la lista de listados. Conversion de los datos al formato CSV elegido.
         buffer = [[str(line[i]).replace('.', decsep) for line in save_data] for i in range(len(save_data[0]))]
         for line_csv in buffer:
             writer.writerow(line_csv)
-        f.close()  # Cerrado del archivo CSV
+    f.close()  # Cerrado del archivo CSV
 
+# Guardado de los datos de las incertidumbres en archivo CSV
 def save_csv_incert(save_uncert, conf_level, path, seplist, decsep):
     # Grabado de los datos obtenidos y apertura del archivo a guardar los datos de incertidumbre.
     date_file_name = datetime.datetime.now().strftime("%H-%M-%S_%d-%m-%Y")  # Hora y dia de guardado. Utilizado para guardado de los archivos CSV
@@ -298,13 +310,19 @@ def save_csv_incert(save_uncert, conf_level, path, seplist, decsep):
             sample_list.sort()
             averange_list = [l for l in list(save_uncert[i].keys()) if 'Promedio-' in l]  # Listado de Tomas - Promedio
             averange_list.sort()
-            exp_list = [l for l in list(save_uncert[i].keys()) if 'Uexpandida ' in l]  # Listado de Tomas - Uexpandida
-            exp_list.sort()
+            type_a_list = [l for l in list(save_uncert[i].keys()) if 'Tipo A' in l]  # Listado de Tomas - Uexpandida
+            type_a_list.sort()
+            type_b_list = [l for l in list(save_uncert[i].keys()) if 'Tipo B-presion' in l]  # Listado de Tomas - Uexpandida
+            type_b_list.sort()
+            comb_uncert_list = [l for l in list(save_uncert[i].keys()) if 'Incertidumbre Combinada' in l]  # Listado de Tomas - Uexpandida
+            comb_uncert_list.sort()
             k_list = [l for l in list(save_uncert[i].keys()) if 'Coeficiente Expansion-' in l]  # Listado de Tomas - K
             k_list.sort()
+            exp_list = [l for l in list(save_uncert[i].keys()) if 'Uexpandida ' in l]  # Listado de Tomas - Uexpandida
+            exp_list.sort()
             distrib_list = [l for l in list(save_uncert[i].keys()) if 'Tipo distribucion-' in l]  # Listado de Tomas - Promedio
             distrib_list.sort()
-            # ----------------- Grbado de los datos al CSV -----------------
+            # ----------------- Grabado de los datos al CSV -----------------
             buffer = []  # Reinicio de la variable. Guarda temporalmente los datos antes de pasarlo al CSV.
             writer.writerow(header)  # Guardado del encabezado
             # ---Guardado de Muestras---
@@ -319,17 +337,35 @@ def save_csv_incert(save_uncert, conf_level, path, seplist, decsep):
             buffer = [str(buffer[i]).replace('.', decsep) for i in range(len(buffer))]
             buffer.insert(0, 'Promedio')
             writer.writerow(buffer)
-            # ---Guardado de Uexpandida---
-            buffer = [save_uncert[i][l] for l in exp_list]
+            # ---Guardado de Incertidumbre Tipo A---
+            buffer = [save_uncert[i][l] for l in type_a_list]
             # Convierto los decimales al formato elegido.
             buffer = [str(buffer[i]).replace('.', decsep) for i in range(len(buffer))]
-            buffer.insert(0, 'Uexpandida ({}%)'.format(conf_level * 100))
+            buffer.insert(0, 'Tipo A')
+            writer.writerow(buffer)
+            # ---Guardado de Incertidumbre Tipo B---
+            buffer = [save_uncert[i][l] for l in type_b_list]
+            # Convierto los decimales al formato elegido.
+            buffer = [str(buffer[i]).replace('.', decsep) for i in range(len(buffer))]
+            buffer.insert(0, 'Tipo B')
+            writer.writerow(buffer)
+            # ---Guardado de Incertidumbre combinada---
+            buffer = [save_uncert[i][l] for l in comb_uncert_list]
+            # Convierto los decimales al formato elegido.
+            buffer = [str(buffer[i]).replace('.', decsep) for i in range(len(buffer))]
+            buffer.insert(0, 'Incertidumbre Combinada')
             writer.writerow(buffer)
             # ---Guardado del Coeficiente de expansion---
             buffer = [save_uncert[i][l] for l in k_list]
             # Convierto los decimales al formato elegido.
             buffer = [str(buffer[i]).replace('.', decsep) for i in range(len(buffer))]
             buffer.insert(0, 'Coeficiente de expansion')
+            writer.writerow(buffer)
+            # ---Guardado de Uexpandida---
+            buffer = [save_uncert[i][l] for l in exp_list]
+            # Convierto los decimales al formato elegido.
+            buffer = [str(buffer[i]).replace('.', decsep) for i in range(len(buffer))]
+            buffer.insert(0, 'Uexpandida ({}%)'.format(conf_level * 100))
             writer.writerow(buffer)
             # ---Guardado del Tipo de distribucion---
             buffer = [save_uncert[i][l] for l in distrib_list]
@@ -346,3 +382,5 @@ def save_csv_incert(save_uncert, conf_level, path, seplist, decsep):
             ['y la incertidumbre debido a la calibracion del instrumento (Tipo B), se debe realizar un analisis'])
         writer.writerow(['de otras fuentes de incertidumbre.'])
     f.close()  # Cerrado del archivo CSV
+
+# Developed by P
