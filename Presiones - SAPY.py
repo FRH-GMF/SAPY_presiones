@@ -29,13 +29,13 @@ colb = [[sg.Text('Nivel de confianza:'),
                   readonly=True, background_color='white')]]
 
 # Armado del frame del autozero
-frama_a = [[sg.Combo(values=[], key='-CERO-', enable_events=True, expand_x=True)],
+frama_a = [[sg.Combo(values=[], key='-AUTOZERO-', enable_events=True, expand_x=True)],
            [sg.Checkbox('Informar el resultado del autozero', key='-INFAUTOZERO-')]]
 
 # Coluna izquierda
 col1 = [[sg.Text("Ingresar carpeta de trabajo")],
         [sg.Input(key='-FOLDER-', enable_events=True, size=(50, 1)), sg.FolderBrowse(button_text='Buscar')],
-        [sg.Frame('Elegir archivo de referencia del cero (Autozero)', frama_a, vertical_alignment='center',
+        [sg.Frame('Elegir archivo del Autozero', frama_a, vertical_alignment='center',
                   pad=(0, (8, 4)), expand_x=True)],
         [sg.Frame('Formato de salida del CSV', frame, vertical_alignment='center', expand_y=True)],
         [sg.Column(cola), sg.Column(colb, vertical_alignment='top')]]
@@ -68,6 +68,7 @@ while True:
 
     # Lectura de la carpeta de trabajo.
     if event == '-FOLDER-':
+        # Guardado de la ubicacion de la carpeta de trabajo
         folder = values['-FOLDER-']
         try:  # Existe la carpeta sino devuelve listado vacio de archivos
             file_list = os.listdir(folder)
@@ -82,7 +83,7 @@ while True:
             fnames = ['No hay archivos CSV']
         # Actualiza los nombres de los archivos al ListBox y al Combo.
         window['-FILE LIST-'].update(fnames)
-        window['-CERO-'].update(values=fnames)
+        window['-AUTOZERO-'].update(values=fnames)
 
     # Selecciona todos los archivos del listado.
     if event == '-TODOS-':
@@ -99,8 +100,8 @@ while True:
         # Carga de datos provenientes de la interfaz grafica.
         # Nombre de la carpeta de trabajo
         path_folder = values['-FOLDER-']
-        # Nombre del archivo del cero referencia
-        cero_file = values['-CERO-']
+        # Nombre del archivo del Autozero referencia
+        autozero_file = values['-AUTOZERO-']
         # Formato de salida CSV
         if values[0]:
             option = 0
@@ -127,19 +128,19 @@ while True:
         if (values['-FILE LIST-'] == [] or values['-FILE LIST-'] == ['No hay archivos CSV']) and can_process:
             error_popup('No se selecciono ningun archivo')
             can_process = False
-        if cero_file == '' and can_process:
+        if autozero_file == '' and can_process:
             error_popup('No se selecciono el archivo de referencia')
             can_process = False
 
         # Calculo de los voltajes de referencia.
         if can_process:  # Si no hubo errores se continua.
             try:  # Intenta procesar el archivo sino genera un mensaje de error.
-                path = path_folder + '/' + cero_file
+                path = path_folder + '/' + autozero_file
                 vref = reference_voltage(path)
             except Exception as e:
                 print(e)
-                # Aviso de cero no procesable
-                error_popup('El archivo de referencia cero no es procesable')
+                # Aviso de archivo de Autozero no procesable
+                error_popup('El archivo del Autozero no es procesable')
                 can_process = False
 
         # Creacion/verificacion de la carpeta "Resultados".
