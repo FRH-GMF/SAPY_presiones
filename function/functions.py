@@ -9,9 +9,9 @@ import base64
 # Carga imagenes del layout e icono
 from image.icono import *
 
-
 # -----------Icono-----------
 icon_bytes = base64.b64decode(icon)
+
 
 # -------------------------Mensajes popup-------------------------
 # Popup de error
@@ -58,11 +58,12 @@ def formato_csv(option):
             salida = salida.decode("utf-8").split("\n")
             decsep = salida[2].replace('    sDecimal    REG_SZ    ', '').replace('\r', '')
             info_popup('Según el registro del sistema el separdor de LISTAS es "{}"'.format(seplist) +
-                        ' y el simbolo DECIMAL es "{}"'.format(seplist))
+                       ' y el simbolo DECIMAL es "{}"'.format(seplist))
         except Exception as e:
             # Ante falla de la deteccion automatica se avisa y se usan valores por default.
             print(e)
-            error_popup('''Fallo el modo automatico, se establecera por defecto separdor de LISTAS "," y el simbolo DECIMAL "."''')
+            error_popup(
+                '''Fallo el modo automatico, se establecera por defecto separdor de LISTAS "," y el simbolo DECIMAL "."''')
             seplist = ','
             decsep = '.'
     elif option == 1:
@@ -167,7 +168,7 @@ def data_process(data_csv, vref, filename, nivconf):
         header = [int(line.replace("toma_", "")) for line in data_csv[0][3:-1]]
         data_csv.pop(0)  # Se elimina el encabezado
         # Extracion y conversion del tiempo en segundos. Se redondea a 4 cifras
-        time_value = [round(float(line[1])* 1e-6, 4) for line in data_csv]
+        time_value = [round(float(line[1]) * 1e-6, 4) for line in data_csv]
         # Guardado de datos del tiempo
         data_out.update({"Tiempo medicion": time_value})
         del time_value
@@ -197,7 +198,7 @@ def data_process(data_csv, vref, filename, nivconf):
         # Extraigo datos de presiones.
         data_raw = data_out[i]
         # Numero del sensor. Se obtiene del key del diccionario
-        numb_probe = i.replace('Presion-Sensor ','')
+        numb_probe = i.replace('Presion-Sensor ', '')
         # Calculo de incertidumbre.
         sample = len(data_raw)  # Numero de muestras.
         data_out.update({"Muestras-{}".format(numb_probe): sample})
@@ -273,19 +274,21 @@ def save_csv_pressure(save_pressure, path, seplist, decsep):
             list_sensor = [l for l in list(save_pressure[i].keys()) if 'Presion-Sensor' in l]
         # Armado de la estructura de datos para ser guardada de cada sensor.
         for j in list_sensor:
-            save_data_buffer = [save_pressure[i]["Archivo"], j]  # Agrego nombre del archivo y el nombre del sensor/tiempo.
-            save_data_buffer.extend(save_pressure[i][j])   # Agregado de los datos de presion
+            save_data_buffer = [save_pressure[i]["Archivo"], j.replace('Presion-Sensor',
+                                                                       'Presion Sensor[Pa] - ')]  # Agrego nombre del archivo y el nombre del sensor/tiempo.
+            save_data_buffer.extend(save_pressure[i][j])  # Agregado de los datos de presion
             # Si el largo de la lista es menor a "max_len" se agregan string vacios "". Todas las listas deben tener
             # la misma lingitud.
             # Nota: Esto permite trasponer los datos en columnas al guardar el CSV sino generaria un error mientras se
             # graba cada linea.
             if len(save_data_buffer) < max_len + 2:  # el 2 es por el agregado del nombre de archivo y el sensor/tiempo.
-                save_data_buffer.extend(["" for i in range(max_len+2-len(save_data_buffer))])
+                save_data_buffer.extend(["" for i in range(max_len + 2 - len(save_data_buffer))])
             save_data.append(save_data_buffer)
-        del(list_sensor, save_data_buffer)
+        del (list_sensor, save_data_buffer)
     # Grabado de los datos obtenidos. Se transpone la variable "save_data"
-    date_file_name = datetime.datetime.now().strftime("%H-%M-%S_%d-%m-%Y")  # Hora y dia de guardado. Utilizado para guardado de los archivos CSV
-    save_file_name = path +'/presiones_{}.csv'.format(date_file_name)
+    date_file_name = datetime.datetime.now().strftime(
+        "%H-%M-%S_%d-%m-%Y")  # Hora y dia de guardado. Utilizado para guardado de los archivos CSV
+    save_file_name = path + '/presiones_{}.csv'.format(date_file_name)
     with open(save_file_name, "w", newline='') as f:
         writer = csv.writer(f, delimiter=seplist)
         # Transposicion de la lista de listados. Conversion de los datos al formato CSV elegido.
@@ -294,17 +297,20 @@ def save_csv_pressure(save_pressure, path, seplist, decsep):
             writer.writerow(line_csv)
     f.close()  # Cerrado del archivo CSV
 
+
 # Guardado de los datos de las incertidumbres en archivo CSV
 def save_csv_incert(save_uncert, conf_level, path, seplist, decsep):
     # Grabado de los datos obtenidos y apertura del archivo a guardar los datos de incertidumbre.
-    date_file_name = datetime.datetime.now().strftime("%H-%M-%S_%d-%m-%Y")  # Hora y dia de guardado. Utilizado para guardado de los archivos CSV
+    date_file_name = datetime.datetime.now().strftime(
+        "%H-%M-%S_%d-%m-%Y")  # Hora y dia de guardado. Utilizado para guardado de los archivos CSV
     save_file_name = path + '/incertidumbre_{}.csv'.format(date_file_name)
     with open(save_file_name, "w", newline='') as f:
         writer = csv.writer(f, delimiter=seplist)
         for i in range(len(save_uncert)):
             # Determinacion de los encabezados de los datos
             header = [l for l in list(save_uncert[i].keys()) if 'Presion-Sensor' in l]
-            header.insert(0, save_uncert[i]['Archivo'])  # Se inserta el nombre de archivo en el primer espacio del encabezado
+            header.insert(0, save_uncert[i][
+                'Archivo'])  # Se inserta el nombre de archivo en el primer espacio del encabezado
             # Listado de variables a guardar. Se analiza los keys del primer diccionario unicamente.
             sample_list = [l for l in list(save_uncert[i].keys()) if 'Muestras-' in l]  # Listado de Tomas - Muestras
             sample_list.sort()
@@ -312,15 +318,18 @@ def save_csv_incert(save_uncert, conf_level, path, seplist, decsep):
             averange_list.sort()
             type_a_list = [l for l in list(save_uncert[i].keys()) if 'Tipo A' in l]  # Listado de Tomas - Uexpandida
             type_a_list.sort()
-            type_b_list = [l for l in list(save_uncert[i].keys()) if 'Tipo B-presion' in l]  # Listado de Tomas - Uexpandida
+            type_b_list = [l for l in list(save_uncert[i].keys()) if
+                           'Tipo B-presion' in l]  # Listado de Tomas - Uexpandida
             type_b_list.sort()
-            comb_uncert_list = [l for l in list(save_uncert[i].keys()) if 'Incertidumbre Combinada' in l]  # Listado de Tomas - Uexpandida
+            comb_uncert_list = [l for l in list(save_uncert[i].keys()) if
+                                'Incertidumbre Combinada' in l]  # Listado de Tomas - Uexpandida
             comb_uncert_list.sort()
             k_list = [l for l in list(save_uncert[i].keys()) if 'Coeficiente Expansion-' in l]  # Listado de Tomas - K
             k_list.sort()
             exp_list = [l for l in list(save_uncert[i].keys()) if 'Uexpandida ' in l]  # Listado de Tomas - Uexpandida
             exp_list.sort()
-            distrib_list = [l for l in list(save_uncert[i].keys()) if 'Tipo distribucion-' in l]  # Listado de Tomas - Promedio
+            distrib_list = [l for l in list(save_uncert[i].keys()) if
+                            'Tipo distribucion-' in l]  # Listado de Tomas - Promedio
             distrib_list.sort()
             # ----------------- Grabado de los datos al CSV -----------------
             buffer = []  # Reinicio de la variable. Guarda temporalmente los datos antes de pasarlo al CSV.
