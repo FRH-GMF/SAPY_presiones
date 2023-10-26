@@ -1,7 +1,8 @@
 from statistics import mean, stdev
 from subprocess import check_output
-import datetime
-import scipy.stats as stats
+from datetime import datetime
+from scipy.stats import t
+from scipy.stats import norm
 import PySimpleGUI as sg
 import csv
 import base64
@@ -220,7 +221,7 @@ def data_process(data_csv, vref, filename, nivconf):
                 rel_tipe = 1e10
             # Analisis del tipo de distribucion
             if rel_tipe > crit:
-                k = stats.t.ppf((1 + nivconf) / 2, sample - 1)  # t student doble cola. t.ppf(alfa, gl)
+                k = t.ppf((1 + nivconf) / 2, sample - 1)  # t student doble cola. t.ppf(alfa, gl)
                 distrib = 't-student con {} GL'.format(sample - 1)
                 # Guardado datos
                 data_out.update({"Coeficiente Expansion-{})".format(numb_probe): k})
@@ -232,7 +233,7 @@ def data_process(data_csv, vref, filename, nivconf):
                 data_out.update({"Coeficiente Expansion-{}".format(numb_probe): k})
                 data_out.update({"Tipo distribucion-{}".format(numb_probe): distrib})
             else:
-                k = stats.norm.ppf((1 + nivconf) / 2)  # Cumple teorema limite central. Distribución Normal.
+                k = norm.ppf((1 + nivconf) / 2)  # Cumple teorema limite central. Distribución Normal.
                 distrib = 'Normal TCLimite'
                 # Guardado datos
                 data_out.update({"Coeficiente Expansion-{})".format(numb_probe): k})
@@ -286,13 +287,15 @@ def save_csv_pressure(save_pressure, path, seplist, decsep):
             save_data.append(save_data_buffer)
         del (list_sensor, save_data_buffer)
     # Grabado de los datos obtenidos. Se transpone la variable "save_data"
-    date_file_name = datetime.datetime.now().strftime(
+    date_file_name = datetime.now().strftime(
         "%H-%M-%S_%d-%m-%Y")  # Hora y dia de guardado. Utilizado para guardado de los archivos CSV
     save_file_name = path + '/presiones_{}.csv'.format(date_file_name)
     with open(save_file_name, "w", newline='') as f:
         writer = csv.writer(f, delimiter=seplist)
         # Transposicion de la lista de listados. Conversion de los datos al formato CSV elegido.
         buffer = [[str(line[i]).replace('.', decsep) for line in save_data] for i in range(len(save_data[0]))]
+        # Corrige la generacion de ",csv" en el nombre de archivo
+        buffer[0] = [line.replace(",csv", ".csv") for line in buffer[0]]
         for line_csv in buffer:
             writer.writerow(line_csv)
     f.close()  # Cerrado del archivo CSV
@@ -301,7 +304,7 @@ def save_csv_pressure(save_pressure, path, seplist, decsep):
 # Guardado de los datos de las incertidumbres en archivo CSV
 def save_csv_incert(save_uncert, conf_level, path, seplist, decsep):
     # Grabado de los datos obtenidos y apertura del archivo a guardar los datos de incertidumbre.
-    date_file_name = datetime.datetime.now().strftime(
+    date_file_name = datetime.now().strftime(
         "%H-%M-%S_%d-%m-%Y")  # Hora y dia de guardado. Utilizado para guardado de los archivos CSV
     save_file_name = path + '/incertidumbre_{}.csv'.format(date_file_name)
     with open(save_file_name, "w", newline='') as f:
