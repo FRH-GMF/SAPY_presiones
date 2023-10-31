@@ -137,8 +137,15 @@ while True:
             try:  # Intenta procesar el archivo sino genera un mensaje de error.
                 path = path_folder + '/' + autozero_file
                 vref = reference_voltage(path)
+                # Listado de los valores de voltaje del autozero. Se activa por el checkbox de la interfaz.
+                if values['-INFAUTOZERO-'] and can_process:
+                    values_vref = []
+                    for toma_volt, value in vref.items():
+                        values_vref.append(str(toma_volt) + ': {}'.format(round(value, 4)))
+                    autozero_popup('\n'.join(values_vref))
             except Exception as e:
                 print(e)
+                vref = []  # Evita tomar valores de una instancia anterior
                 # Aviso de archivo de Autozero no procesable
                 error_popup('El archivo del Autozero no es procesable')
                 can_process = False
@@ -154,13 +161,6 @@ while True:
                 # Aviso la carpeta de salida no pudo crearse
                 error_popup('No se pudo crear la carpeta "Resultados"')
                 can_process = False
-
-        # Listado de los valores de voltaje del autozero. Se activa por el checkbox de la interfaz.
-        if values['-INFAUTOZERO-']:
-            values_vref = []
-            for toma_volt, value in vref.items():
-                values_vref.append(str(toma_volt) + ': {}'.format(round(value, 4)))
-            autozero_popup('\n'.join(values_vref))
 
         # Si no hay errores se prosigue
         if can_process:
@@ -203,15 +203,19 @@ while True:
                 info_popup('No se llego a procesar ningun archivo')
             else:
                 # ---------- Guardado de los archivos ----------
-                # Ventana de aviso de guardado de archivos
-                window2 = sg.Window('', [[sg.Text('Guardando archivos CSV')]], no_titlebar=True,
-                                    background_color='grey', finalize=True, modal=True)
-                save_csv_pressure(save_data, save_path_folder, seplist, decsep)
-                save_csv_incert(save_data, conf_level, save_path_folder, seplist, decsep)
+                try:
+                    # Ventana de aviso de guardado de archivos
+                    window2 = sg.Window('', [[sg.Text('Guardando archivos CSV')]], no_titlebar=True,
+                                        background_color='grey', finalize=True, modal=True)
+                    save_csv_pressure(save_data, save_path_folder, seplist, decsep)
+                    save_csv_incert(save_data, conf_level, save_path_folder, seplist, decsep)
+                    info_popup('Los archivos de salida se guardaron con exito')
+                except Exception as e:
+                    print(e)
+                    info_popup('Existen problemas en el guardado de los archivos de salida')
                 # Se cierra la ventana de aviso de guardado de archivos.
                 window2.close()
-                info_popup('Los archivos de salida se guardaron con exito')
-
+                
             # Aviso de archivos no procesados
             if error_files_list:
                 error_files_popup('\n'.join(error_files_list))
