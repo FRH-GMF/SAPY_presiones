@@ -180,21 +180,25 @@ while True:
                 # Actualizacion barra de progreso
                 window2['-PROGRESS-'].update(current_count=i)
                 window2['-PROGRESS VALUE-'].update('Procesando ... {}%'.format(int(((i+1)/len(file_path_list))*100)))
-                # Se abre cada archivo seleccionado en la interfaz.
-                with open(file_path_list[i]) as csv_file:
-                    csv_reader = csv.reader(csv_file, delimiter=';')
-                    # Extraccion de todas las filas del archivo CSV
-                    for csv_row in csv_reader:
-                        data.append(csv_row)
-                    try:
-                        # Calculo de las presiones y la incertidumbre
-                        data_calc = data_process(data, vref, file_list[i], conf_level)
-                        # Union de los datos procesados de cada archivo.
-                        save_data.append(data_calc)
-                    except Exception as e:
-                        print(e)
-                        # Se agrega el nombre de archivo que no pudo procesarse.
-                        error_files_list.append(file_list[i])
+                # Se abre cada archivo seleccionado en la interfaz..
+                if os.path.isfile(file_path_list[i]):  # Comprobacion de existencia del archivo
+                    with open(file_path_list[i]) as csv_file:
+                        csv_reader = csv.reader(csv_file, delimiter=';')
+                        # Extraccion de todas las filas del archivo CSV
+                        for csv_row in csv_reader:
+                            data.append(csv_row)
+                        try:
+                            # Calculo de las presiones y la incertidumbre
+                            data_calc = data_process(data, vref, file_list[i], conf_level)
+                            # Union de los datos procesados de cada archivo.
+                            save_data.append(data_calc)
+                        except Exception as e:
+                            print(e)
+                            # Se agrega el nombre de archivo que no pudo procesarse.
+                            error_files_list.append(file_list[i])
+                else:
+                    # Se agrega el nombre de archivo que no existe.
+                    error_files_list.append(file_list[i])
             # Se cierra la ventana de progreso
             window2.close()
 
@@ -215,7 +219,7 @@ while True:
                     info_popup('Existen problemas en el guardado de los archivos de salida')
                 # Se cierra la ventana de aviso de guardado de archivos.
                 window2.close()
-                
+
             # Aviso de archivos no procesados
             if error_files_list:
                 error_files_popup('\n'.join(error_files_list))
