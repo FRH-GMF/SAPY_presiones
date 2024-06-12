@@ -93,6 +93,8 @@ def reference_voltage(path):
         for csv_row in csv_reader:
             data_row.append(csv_row)
     data_row.pop(-1)  # Se elimina ultima fila con el caracter #
+    # Se elimina lineas no correspondientes a la medicion de presiones
+    data_row = [sublist for sublist in data_row if ">M" in sublist or ">V" in sublist or ">T" in sublist]
     # Determinaciòn tipo de formato de entrada. Con o sin tiempo incluido.
     if data_row[0][0] == '>T':
         format_input_file = 'B'
@@ -135,6 +137,8 @@ def data_process(data_csv, vref, filename, nivconf):
     # --------------Procesamiento de los datos en bruto--------------
     data = []  # Inicializacion variable de guardado de los datos.
     data_csv.pop(-1)  # Se elimina ultima fila con el caracter #
+    # Se elimina lineas no correspondientes a la medicion de presiones
+    data_csv = [sublist for sublist in data_csv if ">M" in sublist or ">V" in sublist or ">T" in sublist]
     # Determinaciòn tipo de formato de entrada. Con o sin tiempo incluido.
     if data_csv[0][0] == '>T':
         format_input_file = 'B'
