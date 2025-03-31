@@ -159,7 +159,7 @@ while True:
             except Exception as e:
                 print(e)
                 # Aviso la carpeta de salida no pudo crearse
-                error_popup('No se pudo crear la carpeta "Resultados"')
+                error_popup('No se pudo crear la carpeta "Resultados')
                 can_process = False
 
         # Si no hay errores se prosigue

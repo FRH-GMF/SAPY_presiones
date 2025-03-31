@@ -320,24 +320,16 @@ def save_csv_incert(save_uncert, conf_level, path, seplist, decsep):
                 'Archivo'])  # Se inserta el nombre de archivo en el primer espacio del encabezado
             # Listado de variables a guardar. Se analiza los keys del primer diccionario unicamente.
             sample_list = [l for l in list(save_uncert[i].keys()) if 'Muestras-' in l]  # Listado de Tomas - Muestras
-            sample_list.sort()
             averange_list = [l for l in list(save_uncert[i].keys()) if 'Promedio-' in l]  # Listado de Tomas - Promedio
-            averange_list.sort()
             type_a_list = [l for l in list(save_uncert[i].keys()) if 'Tipo A' in l]  # Listado de Tomas - Uexpandida
-            type_a_list.sort()
             type_b_list = [l for l in list(save_uncert[i].keys()) if
                            'Tipo B-presion' in l]  # Listado de Tomas - Uexpandida
-            type_b_list.sort()
             comb_uncert_list = [l for l in list(save_uncert[i].keys()) if
                                 'Incertidumbre Combinada' in l]  # Listado de Tomas - Uexpandida
-            comb_uncert_list.sort()
             k_list = [l for l in list(save_uncert[i].keys()) if 'Coeficiente Expansion-' in l]  # Listado de Tomas - K
-            k_list.sort()
             exp_list = [l for l in list(save_uncert[i].keys()) if 'Uexpandida ' in l]  # Listado de Tomas - Uexpandida
-            exp_list.sort()
             distrib_list = [l for l in list(save_uncert[i].keys()) if
                             'Tipo distribucion-' in l]  # Listado de Tomas - Promedio
-            distrib_list.sort()
             # ----------------- Grabado de los datos al CSV -----------------
             buffer = []  # Reinicio de la variable. Guarda temporalmente los datos antes de pasarlo al CSV.
             writer.writerow(header)  # Guardado del encabezado
