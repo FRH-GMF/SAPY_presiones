@@ -55,7 +55,7 @@ layout = [[sg.Column(col1), sg.Column(col2)]]
 
 # Generacion de 2 ventanas (windows)
 # La primera es el programa principal, la segunda es para ventanas de avisos de progreso.
-window1 = sg.Window("Procesamiento de presiones – SAPY - Version 1.1", layout, resizable=False, icon=icon_bytes,
+window1 = sg.Window("Procesamiento de presiones – SAPY - Version 1.2", layout, resizable=False, icon=icon_bytes,
                     finalize=True)  # Ventana de Principal
 window2 = None  # Ventana de progreso
 
