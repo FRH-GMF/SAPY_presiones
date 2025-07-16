@@ -1,2 +1,5 @@
-pyinstaller.exe --onefile --windowed --icon=LAyF.ico Procesamiento-GUI.py
-pyinstaller.exe --onedir --windowed --icon=LAyF.ico Procesamiento-GUI.py
+Se compila en un solo archivo ejecutable EXE
+pyinstaller.exe --onefile --windowed --icon=LAyF.ico Presiones-SAPY.py
+
+Se compila en una carpeta
+pyinstaller.exe --onedir --windowed --icon=LAyF.ico Presiones-SAPY.py

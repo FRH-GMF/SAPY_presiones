@@ -1,3 +1,5 @@
+# Version 1.2.0
+
 import os
 import base64
 
@@ -180,22 +182,19 @@ while True:
                 # Actualizacion barra de progreso
                 window2['-PROGRESS-'].update(current_count=i)
                 window2['-PROGRESS VALUE-'].update('Procesando ... {}%'.format(int(((i+1)/len(file_path_list))*100)))
-                # Se abre cada archivo seleccionado en la interfaz..
+                # Se abre cada archivo seleccionado en la interfaz.
                 if os.path.isfile(file_path_list[i]):  # Comprobacion de existencia del archivo
-                    with open(file_path_list[i]) as csv_file:
-                        csv_reader = csv.reader(csv_file, delimiter=';')
-                        # Extraccion de todas las filas del archivo CSV
-                        for csv_row in csv_reader:
-                            data.append(csv_row)
-                        try:
-                            # Calculo de las presiones y la incertidumbre
-                            data_calc = data_process(data, vref, file_list[i], conf_level)
-                            # Union de los datos procesados de cada archivo.
-                            save_data.append(data_calc)
-                        except Exception as e:
-                            print(e)
-                            # Se agrega el nombre de archivo que no pudo procesarse.
-                            error_files_list.append(file_list[i])
+                    try:
+                        # Pre-proceso los datos del csv
+                        data = pre_process_csv(file_path_list[i])
+                        # Calculo de las presiones y la incertidumbre
+                        data_calc = data_process(data, vref, file_list[i], conf_level)
+                        # Union de los datos procesados de cada archivo.
+                        save_data.append(data_calc)
+                    except Exception as e:
+                        print(e)
+                        # Se agrega el nombre de archivo que no pudo procesarse.
+                        error_files_list.append(file_list[i])
                 else:
                     # Se agrega el nombre de archivo que no existe.
                     error_files_list.append(file_list[i])

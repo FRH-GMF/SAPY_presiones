@@ -3,9 +3,10 @@ from subprocess import check_output
 from datetime import datetime
 from scipy.stats import t
 from scipy.stats import norm
-import PySimpleGUI as sg
+import FreeSimpleGUI as sg
 import csv
 import base64
+import os
 
 # Carga imagenes del layout e icono
 from image.icono import *
@@ -82,119 +83,150 @@ def formato_csv(option):
     return seplist, decsep
 
 
+# Reorganiza la información recibida de los sensores del SAPY
+def pre_process_csv(file_path):
+    data_csv = []
+    # Paso 1: Extracción de datos del CSV
+    with open(file_path, mode='r', newline='', encoding='utf-8') as csvfile:
+        csv_reader = csv.reader(csvfile, delimiter=';')
+        for csv_row in csv_reader:
+            data_csv.append(csv_row)
+        # Paso 2: Se eliminan las filas que no tengan información de los sensores de presión.
+        # Se elimina el final de archivo "#", si existe.
+        if "#" in data_csv[-1]:
+            data_csv.pop(-1)
+        # Se analiza los encabezados de las primeras 5 filas y se eliminan los que no tengan datos como ">T", ">M"
+        # o ">V". Posicion, angulo u otro dato es eliminado
+        data_csv_buffer = [sub_list for sub_list in data_csv[:5]
+                           if sub_list and (sub_list[0].startswith(">M") or
+                                            sub_list[0].startswith(">V") or
+                                            sub_list[0].startswith(">T"))]
+        data_csv = data_csv_buffer + data_csv[5:]  # Junto las filas filtradas y el resto de los datos
+
+        # Paso 3: Se determina la estructura de datos de ingreso. Por número o por tiempo de muestreo.
+        # Se analiza usando el encabezado de filas.
+        row_header_summary = [row_header[0] for row_header in data_csv if row_header]
+        # Elimino encabezados duplicados
+        row_header = list(set(row_header_summary))
+        # Analizo encabezado y la estructura definida
+        time_structure_flag = False
+        sample_structure_flag = False
+        for i in row_header:
+            if ">T" in i:
+                time_structure_flag = True
+                break
+            if ">M" in i or ">V" in i:
+                sample_structure_flag = True
+                break
+
+        # ANÁLISIS ESTRUCTURA MUESTREO
+        if sample_structure_flag:
+            data_dictionary = {}  # Inicio variable de salida tipo diccionario
+            for i in data_csv:
+
+                # Paso 4: Se cargan los datos de cada sensor de cada banco al diccionario de salida.
+                # Genero el nombre de encabezado
+                if ">M" in i[0]:
+                    header = i[0].replace(">M", "sensor_") + "_" + i[1]
+                elif ">V" in i[0]:
+                    header = i[0].replace(">V", "tension_") + "_" + i[1]
+                # El ultimo elemento de la fila "<" se elimina con [2:-1]. Los dos primeros elementos son el número
+                # de banco y el número de sensor.
+                data_dictionary.update({header: [float(row.replace(",", ".")) for row in i[2:-1]]})
+
+        # ANÁLISIS ESTRUCTURA TIEMPO
+        if time_structure_flag:
+            # Paso 4: Determinar la cantidad de bancos usados. Máximo 5 bancos.
+            banc_codes = [row[0] for row in data_csv[:5]]
+            # Remuevo los valores duplicados y determino la cantidad de bancos
+            number_banc = len(list(set(banc_codes)))
+
+            # Paso 5: Se modifican los encabezados de "tiempo" y "tension" en función del número de banco
+            for i in range(number_banc):
+                banc_name = data_csv[i][0].replace(">T", "")
+                data_csv[i][1] = 'tiempo_' + banc_name
+                data_csv[i][2] = 'tension_' + banc_name
+
+            # Paso 6: Desentrelazar los datos de los bancos y guardar en forma de listas.
+            #  Se coloca en forma continua los datos de ambos bancos y no en forma entralazada.
+            data_list = []
+            for i in range(0, len(data_csv), number_banc):
+                group = []
+                for sublist in data_csv[i:i + number_banc]:
+                    group.extend(sublist[1:-1])
+                data_list.append(group)
+
+            # Paso 7: Se transponen los datos de manera que cada encabezado es el key del diccionario y la lista
+            # adjunta al key son los datos
+            headers = data_list[0]  # Extraer los encabezados de datos
+            data_dictionary = {header: [float(row[i]) for row in data_list[1:]] for i, header in enumerate(headers)}
+        return data_dictionary
+
+
 # Determinacion del voltaje de referencia de cada sensor del instrumento.
 def reference_voltage(path):
-    # Diccionario por defecto de los voltajes de referencia de los sensores. Maximo SAPY 32 sensores. Valor pod default 1.
-    vref = {f'V{i}': 1 for i in range(1, 33)}
-    with open(path) as csv_file:
-        csv_reader = csv.reader(csv_file, delimiter=';')
-        # Extraigo todas las filas
-        data_row = []  # Incializacion variable donde se guardan los datos en bruto del CSV.
-        for csv_row in csv_reader:
-            data_row.append(csv_row)
-    data_row.pop(-1)  # Se elimina ultima fila con el caracter #
-    # Se elimina lineas no correspondientes a la medicion de presiones
-    data_row = [sublist for sublist in data_row if ">M" in sublist or ">V" in sublist or ">T" in sublist]
-    # Determinaciòn tipo de formato de entrada. Con o sin tiempo incluido.
-    if data_row[0][0] == '>T':
-        format_input_file = 'B'
-    else:
-        format_input_file = 'A'
-    # Calculo de los voltajes de referencia para diferentes formatos de datos
-    if format_input_file == 'A':
-        # Calculo el valor promedio de voltaje de cada sensor del archivo seleccionado.
-        for i in range(int(len(data_row) / 2)):
-            numbsenor = data_row[2 * i][1]  # Se utiliza la estrategia de que los valores vienen en pares
-            values = data_row[i * 2][2:-1]  # Se extraen los valores de los voltajes.
-            values = [float(i.replace(',', '.')) for i in values]  # Convierto valores de la lista a float.
-            averang = sum(values) / len(values)  # Calculo el promedio de Vout.
-            averang = float('%.6f' % averang)  # Reducir el numero de cifras a 6
-            vref["V{}".format(numbsenor)] = averang  # Modifico valor del diccionario para el sensor especifico.
-    elif 'B':
-        # Determinacion del numero de cada sensor utilizado.
-        # Notas codigo: En la posicion 3 empiezan los valores de  presión ; El -1 es por la presencia de ">"
-        header = [int(line.replace("toma_", "")) for line in data_row[0][3:-1]]
-        data_row.pop(0)  # Se elimina el encabezado
-        count = 0  # Contador utilizado para determinar el numero de sensor procesado
-        for i in range(3, len(data_row[0]) - 1):
-            # Valor de referencia del sensor analizado.
-            numbsenor = header[count]
-            # Se suma el contador ya que se definio el "numbsenor"
-            count += 1
-            values = []  # Reinicio de la variable
-            for j in range(len(data_row)):
-                values.append(float(data_row[j][i].replace(',', '.')))
-            averang = sum(values) / len(values)  # Calculo el promedio de Vout.
-            averang = float('%.6f' % averang)  # Reducir el numero de cifras a 6
-            vref["V{}".format(numbsenor)] = averang  # Modifico valor del diccionario para el sensor especifico.
-    return vref
+    # Paso 1: Pre-procesamiento del archivo csv
+    data_dictionary_csv = pre_process_csv(path)
+    # Paso 2: Crear diccionario con los voltajes de referencia de los sensores con valor 1.
+    zero_voltage = {f"V_{i}_{j}": float(1) for i in range(5) for j in range(1, 13)}
+    # Paso 3: Obtengo los valores promedio de voltaje de cada sensor y actualizo "reference_voltage"
+    for key, value in data_dictionary_csv.items():
+        if 'sensor' in key:
+            v_average = round(sum(value) / len(value), 6)  # Reducir el numero de cifras a 6
+            # Solo para debugging
+            # print(f"{key} = {sum(value)}")
+            # print(len(value))
+            sensor_name = key.replace('sensor', 'V')
+            zero_voltage[sensor_name] = v_average
+    return zero_voltage
 
 
 # Procesamiento de las presiones y la incertidumbre
-def data_process(data_csv, vref, filename, nivconf):
-    data_out = {}  # Inicializacion variable donde se guardan los resultados de cada archivo csv procesado.
+def data_process(data_csv, volt_reference, filename, nivconf):
+    data_out = {}  # Inicialización variable donde se guardan los resultados de cada archivo csv procesado.
     data_out.update({'Archivo': filename})  # Guardado nombre de archivo
-    # --------------Procesamiento de los datos en bruto--------------
-    data = []  # Inicializacion variable de guardado de los datos.
-    data_csv.pop(-1)  # Se elimina ultima fila con el caracter #
-    # Se elimina lineas no correspondientes a la medicion de presiones
-    data_csv = [sublist for sublist in data_csv if ">M" in sublist or ">V" in sublist or ">T" in sublist]
-    # Determinaciòn tipo de formato de entrada. Con o sin tiempo incluido.
-    if data_csv[0][0] == '>T':
-        format_input_file = 'B'
-    else:
-        format_input_file = 'A'
-    # Calculo de presion para diferentes formatos de datos
-    if format_input_file == 'A':
-        for line in data_csv:
-            # Se elimina el primer (M o V) y el ultimo (>) elemento
-            line = line[1:-1]
-            # Conversion de string a float de todos los valores del CSV.
-            data_buffer = [float(i.replace(',', '.')) for i in line]
-            data.append(data_buffer)
-        # --------------Procesamiento de las presiones--------------
-        for i in range(int(len(data) / 2)):  # Se utiliza la estrategia de que los valores de las tomas vienen en pares
-            # Valor de referencia del sensor analizado.
-            numbsenor = int(data[2 * i][0])
-            V0 = vref["V{}".format(numbsenor)]  # Extraigo del diccionario el valor de referencia.
-            # Calculo las presiones para el sensor indicado.
+
+    # --------------Procesamiento de las presiones--------------
+    # Paso 1: Convierto los datos de voltaje a presiones, segun fabricante del sensor.
+    for key, data_list in data_csv.items():
+
+        # Paso 1-a:Se determina el tipo de estructura de datos utilizada. Por tiempo o muestreo
+        time_structure_flag = False
+        sample_structure_flag = False
+        if any("tiempo" in key for key in data_csv):
+            time_structure_flag = True
+        else:
+            sample_structure_flag = True
+
+        # Paso 1-b: Si el key indica ser "tiempo" se guarda la variable como se indica en el key del diccionario.
+        if 'tiempo' in key:
+            data_out[key] = data_list  # Agrego el tiempo del muestreo
+
+        # Paso 1-c: Si es sensor se procesa todos los voltajes a presiones y se guarda.
+        if 'sensor' in key:
+            # Numero de banco y sensor
+            banc_number = int(key.split('_')[1])  # Se determina el numero de banco del sensor
+            sensor_number = key.replace('sensor_', '')
+
+            # Los voltajes de placa varian en función de si la estructura es por muestreo o por tiempo.
+            # En caso del tiempo hay una tension única para varios sensores y por muestreo uno por cada sensor.
+            if time_structure_flag:
+                Vs = data_csv['tension_{}'.format(banc_number)]  # Lista de valores de voltaje de placa del banco
+            elif sample_structure_flag:
+                Vs = data_csv['tension_{}'.format(sensor_number)]  # Lista de valores de voltaje de placa del banco
+
+            V0 = volt_reference["V_{}".format(sensor_number)]  # Extraigo el voltaje de referencia del sensor.
+            Vout = data_list  # Valores de voltaje del sensor.
+            # Finalmente se calculan las presiones
             data_pressure = []  # Inicializo la variable donde guardo las presiones.
-            for j in range(1, len(data[0])):
-                Vout = data[i * 2][j]
-                Vs = data[i * 2 + 1][j]
-                value = (((Vout - V0) / (Vs * 0.2)) * 1000)  # Calculo de presion en Pascales
-                value = float('%.4f' % value)  # Reduccion a 4 cifras.
-                data_pressure.append(value)
+            for i in range(len(Vout)):
+                pressure = (((Vout[i] - V0) / (Vs[i] * 0.2)) * 1000)  # Calculo de presion en Pascales
+                pressure = float('%.4f' % pressure)  # Reduccion a 4 cifras.
+                data_pressure.append(pressure)
             # Guardado de datos en variable de salida
-            data_out.update({"Presion-Sensor {}".format(numbsenor): data_pressure})  # Agregado de datos de presiones
-    else:
-        # Determinacion de los numero de sensores guardados
-        # Notas codigo: En la posicion 3 empiezan los sensores de presión ; El -1 es por la presencia de ">"
-        header = [int(line.replace("toma_", "")) for line in data_csv[0][3:-1]]
-        data_csv.pop(0)  # Se elimina el encabezado
-        # Extracion y conversion del tiempo en segundos. Se redondea a 4 cifras
-        time_value = [round(float(line[1]) * 1e-6, 4) for line in data_csv]
-        # Guardado de datos del tiempo
-        data_out.update({"Tiempo medicion": time_value})
-        del time_value
-        # Se analiza los datos por columna usando un contandor para determinar el numero de sensor de cada columna
-        count = 0  # Contador utilizado para determinar numero de sensor
-        for i in range(3, len(data_csv[0]) - 1):
-            # Valor de referencia del sensor analizado.
-            numbsenor = header[count]
-            V0 = vref["V{}".format(numbsenor)]  # Extraigo del diccionario el valor de referencia.
-            # Se suma el contador ya que se definio el "numbsenor"
-            count += 1
-            # Calculo las presiones para el sensor indicado.
-            pressure = []  # Inicializo la variable donde guardo las presiones.
-            for j in range(len(data_csv)):
-                Vout = float(data_csv[j][i].replace(',', '.'))
-                Vs = float(data_csv[j][2].replace(',', '.'))
-                value = (((Vout - V0) / (Vs * 0.2)) * 1000)  # Calculo de presion en Pascales
-                value = float('%.4f' % value)  # Reduccion a 4 cifras
-                pressure.append(value)
-            # Guardado de datos en variable de salida
-            data_out.update({"Presion-Sensor {}".format(numbsenor): pressure})  # Agregado de datos de presiones
+            data_out.update(
+                {"Presion-Sensor_{}".format(sensor_number): data_pressure})  # Agregado de datos de presiones
+
     # -------------- Calculo de la incertidumbre --------------
     # Se determina el numero de sensores de los keys a partir del diccionario "data_out"
     pressure_list = [k for k in list(data_out.keys()) if 'Presion-Sensor' in k]
@@ -203,7 +235,7 @@ def data_process(data_csv, vref, filename, nivconf):
         # Extraigo datos de presiones.
         data_raw = data_out[i]
         # Numero del sensor. Se obtiene del key del diccionario
-        numb_probe = i.replace('Presion-Sensor ', '')
+        numb_probe = i.replace('Presion-Sensor_', '')
         # Calculo de incertidumbre.
         sample = len(data_raw)  # Numero de muestras.
         data_out.update({"Muestras-{}".format(numb_probe): sample})
@@ -253,6 +285,7 @@ def data_process(data_csv, vref, filename, nivconf):
             data_out.update({"Coeficiente Expansion-{}".format(numb_probe): 'N/A'})
             data_out.update({"Tipo distribucion-{}".format(numb_probe): 'N/A'})
             data_out.update({"Uexpandida ({}%)-{}".format(nivconf * 100, numb_probe): 'N/A'})
+
     return data_out
 
 
@@ -260,7 +293,7 @@ def data_process(data_csv, vref, filename, nivconf):
 # Guardado de los datos de las presiones en archivo CSV
 def save_csv_pressure(save_pressure, path, seplist, decsep):
     save_data = []  # Variable buffer para grabacion de datos.
-    # Determinar la longitud mas larga de las listas de presiones.
+    # Paso 1: Determinar la longitud mas larga de las listas de presiones.
     # Puede existir mediciones con numeros diferentes de muestras.
     max_len = 0
     for i in range(len(save_pressure)):
@@ -269,35 +302,41 @@ def save_csv_pressure(save_pressure, path, seplist, decsep):
         long = len(save_pressure[i][list(save_pressure[i].keys())[1]])
         if max_len < long:
             max_len = long
-    # Listado de sensores usados.
+    # Paso 2: Armado de lista de listas con los datos calculados
+    data_csv_output = []
     for i in range(len(save_pressure)):
-        # Listado de keys para cada formato de entrada (con o sin tiempo)
-        if 'Tiempo medicion' in list(save_pressure[i].keys()):  # Si tiene tiempo se agrega los datos.
-            list_sensor = ['Tiempo medicion']
-            list_sensor.extend([l for l in list(save_pressure[i].keys()) if 'Presion-Sensor' in l])
-        else:
-            list_sensor = [l for l in list(save_pressure[i].keys()) if 'Presion-Sensor' in l]
-        # Armado de la estructura de datos para ser guardada de cada sensor.
-        for j in list_sensor:
-            save_data_buffer = [save_pressure[i]["Archivo"], j.replace('Presion-Sensor',
-                                                                       'Presion Sensor[Pa] - ')]  # Agrego nombre del archivo y el nombre del sensor/tiempo.
-            save_data_buffer.extend(save_pressure[i][j])  # Agregado de los datos de presion
-            # Si el largo de la lista es menor a "max_len" se agregan string vacios "". Todas las listas deben tener
-            # la misma lingitud.
-            # Nota: Esto permite trasponer los datos en columnas al guardar el CSV sino generaria un error mientras se
-            # graba cada linea.
-            if len(save_data_buffer) < max_len + 2:  # el 2 es por el agregado del nombre de archivo y el sensor/tiempo.
-                save_data_buffer.extend(["" for i in range(max_len + 2 - len(save_data_buffer))])
-            save_data.append(save_data_buffer)
-        del (list_sensor, save_data_buffer)
-    # Grabado de los datos obtenidos. Se transpone la variable "save_data"
+        file_name = save_pressure[i]['Archivo']  # Guardo nombre de archivo
+        for key, data in save_pressure[i].items():
+            data_csv_output_buffer = [file_name]  # Se agrega nombre de archivo a cada variable
+            if 'tiempo' in key:
+                data_csv_output_buffer.extend([key.replace('tiempo', 'Tiempo Muestreo')])  # Se agrega encabezado
+                data_csv_output_buffer.extend(data)  # Se agrega los datos de salida
+                # Agregan elementos vacios para que la listas tengan todas las mismas longitudes
+                data_csv_output_buffer.extend([''] * (max_len + 2 - len(data_csv_output_buffer)))
+                data_csv_output.append(data_csv_output_buffer)
+            elif 'Presion' in key:
+                data_csv_output_buffer.extend([key])  # Se agrega encabezado
+                data_csv_output_buffer.extend(data)  # Se agrega los datos de salida
+                # Agregan elementos vacios para que la listas tengan todas las mismas longitudes
+                data_csv_output_buffer.extend([''] * (max_len + 2 - len(data_csv_output_buffer)))
+                data_csv_output.append(data_csv_output_buffer)
+
+        # Paso 3: Se agregan espacios vacios para generar listas de igual longitud
+        # Si el largo de la lista es menor a "max_len" se agregan string vacios "". Todas las listas deben tener
+        # la misma longitud.
+        # Nota: Esto permite trasponer los datos en columnas al guardar el CSV sino generaría un error mientras se
+        # graba cada linea.
+
+    # Paso 4: Grabado de los datos obtenidos. Se transpone la variable "save_data"
     date_file_name = datetime.now().strftime(
         "%H-%M-%S_%d-%m-%Y")  # Hora y dia de guardado. Utilizado para guardado de los archivos CSV
     save_file_name = path + '/presiones_{}.csv'.format(date_file_name)
     with open(save_file_name, "w", newline='') as f:
         writer = csv.writer(f, delimiter=seplist)
         # Transposicion de la lista de listados. Conversion de los datos al formato CSV elegido.
-        buffer = [[str(line[i]).replace('.', decsep) for line in save_data] for i in range(len(save_data[0]))]
+        buffer = [[str(line[i]).replace('.', decsep) for line in data_csv_output] for i in
+                  range(len(data_csv_output[0]))]
+        [[str(row[i]).replace('.', decsep) for row in data_csv_output] for i in range(len(data_csv_output[0]))]
         # Corrige la generacion de ",csv" en el nombre de archivo
         buffer[0] = [line.replace(",csv", ".csv") for line in buffer[0]]
         for line_csv in buffer:
@@ -390,5 +429,43 @@ def save_csv_incert(save_uncert, conf_level, path, seplist, decsep):
             ['y la incertidumbre debido a la calibracion del instrumento (Tipo B), se debe realizar un analisis'])
         writer.writerow(['de otras fuentes de incertidumbre.'])
     f.close()  # Cerrado del archivo CSV
+
+
+# Debug Code
+if __name__ == "__main__":
+
+    # Interface grafica de prueba
+    layout = [
+        [sg.Text("Seleccionar archivo de prueba:"), sg.Input(key="-ARCHIVO-"), sg.FileBrowse()],
+        [sg.Button("Aceptar"), sg.Button("Cancelar")]
+    ]
+
+    # Create the window
+    window = sg.Window("File Selector", layout)
+
+    # Event loop
+    while True:
+        event, values = window.read()
+
+        if event == sg.WINDOW_CLOSED or event == "Cancelar":
+            print("Operacion cancelada.")
+            break
+        elif event == "Aceptar":
+            file_path = values["-ARCHIVO-"]
+            if file_path:
+                # Prueba Modulo "Voltaje de referencia"
+                print("Archivo Seleccionado:", file_path)
+                data = pre_process_csv(file_path)
+                print(data)
+                vref = reference_voltage(file_path)
+                print(vref)
+                filename = os.path.basename(file_path)
+                print(data_process(data, vref, filename, 0.95))
+                break
+            else:
+                sg.popup("Favor de seleccionar un archivo.")
+
+    # Close the window
+    window.close()
 
 # Developed by P
